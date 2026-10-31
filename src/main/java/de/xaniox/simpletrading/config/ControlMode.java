@@ -23,7 +23,14 @@ public enum ControlMode {
     WHITELIST;
 
     public static ControlMode getMode(String str, ControlMode def) {
-        str = str.toUpperCase();
+        if (str == null) {
+            if (def != null) {
+                return def;
+            }
+            throw new IllegalArgumentException("No control mode defined");
+        }
+
+        str = str.toUpperCase(java.util.Locale.ROOT);
 
         for (ControlMode mode : values()) {
             if (mode.name().equals(str)) {

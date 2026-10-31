@@ -18,6 +18,8 @@
 package de.xaniox.simpletrading.i18n;
 
 import com.google.common.collect.Lists;
+import de.xaniox.simpletrading.Text;
+import net.kyori.adventure.text.Component;
 
 import java.text.ParseException;
 import java.util.List;
@@ -95,6 +97,14 @@ public class ParsedMessage {
 		}
 		
 		return this;
+	}
+	
+	/**
+	 * Returns the message with all variables replaced as a component,
+	 * parsing its legacy {@code &} color codes
+	 */
+	public Component toComponent() {
+		return Text.of(toString());
 	}
 	
 	@Override

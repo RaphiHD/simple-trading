@@ -25,21 +25,13 @@ import de.xaniox.simpletrading.i18n.I18N;
 import de.xaniox.simpletrading.i18n.I18NBuilder;
 import de.xaniox.simpletrading.i18n.I18NManager;
 import net.milkbowl.vault.economy.Economy;
-import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
-import org.bukkit.command.ConsoleCommandSender;
-import org.bukkit.configuration.Configuration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.event.HandlerList;
-import org.bukkit.plugin.PluginDescriptionFile;
-import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
-import org.mcstats.Metrics;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -47,170 +39,148 @@ import java.net.URLConnection;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.List;
 import java.util.logging.Level;
 
 public class SimpleTrading extends JavaPlugin {
 
     private static final String I18N_CLASSPATH_FOLDER = "i18n/";
-	private static final String VAULT_PLUGIN_NAME = "Vault";
-	
-	private TradeConfiguration config;
-	private I18NManager i18nManager;
-	private TradeFactory factory;
-	private BukkitTask movementTask;
-	private ItemControlManager itemControlManager;
+    private static final String VAULT_PLUGIN_NAME = "Vault";
+
+    private TradeConfiguration config;
+    private I18NManager i18nManager;
+    private TradeFactory factory;
+    private BukkitTask movementTask;
+    private ItemControlManager itemControlManager;
     private WorldControlManager worldControlManager;
-	
-	private boolean usingVault;
-	private Economy econ;
-	private boolean isDisabling;
 
-	public void onEnable() {
-		File configFile = new File(this.getDataFolder(), "config.yml");
+    private Economy econ;
+    private boolean isDisabling;
 
-        if (!configFile.exists()) {
-            saveDefaultConfig();
-        }
-
-        Path dataFolder = getDataFolder().toPath();
-        Configuration checkConfig = YamlConfiguration.loadConfiguration(configFile);
-        checkConfigVersions(checkConfig, dataFolder);
+    @Override
+    public void onEnable() {
+        saveDefaultConfig();
+        checkConfigVersion();
 
         File i18nFolder = new File(getDataFolder(), "i18n");
         i18nFolder.mkdirs();
 
-		config = new TradeConfiguration(getConfig());
+        config = new TradeConfiguration(getConfig(), getLogger());
         I18NManager.setGlobalBuilder(I18NBuilder.builder()
             .setFileSystemFolder(i18nFolder)
             .setClasspathFolder(I18N_CLASSPATH_FOLDER)
             .setLoadingMode(I18N.LoadingMode.FILE_SYSTEM)
             .setLocale(config.getLocale())
+            .setClassLoader(getClassLoader())
             .setLogger(getLogger()));
         i18nManager = new I18NManager();
-		
-		initVaultHook();
-		
-		itemControlManager = new ItemControlManager(config);
+
+        if (getEconomy() == null) {
+            getLogger().info("Vault or an economy plugin was not found, money trading is disabled.");
+        }
+
+        itemControlManager = new ItemControlManager(config);
         worldControlManager = new WorldControlManager(config);
-		
-		factory = new TradeFactory(this, config, econ, itemControlManager);
-		
-		getCommand("trade").setExecutor(new CommandTrade(this));
-		movementTask = getServer().getScheduler().runTaskTimer(this, new MoveCheckerRunnable(factory, config), 20L, 30L);
 
-		try {
-			Metrics metrics = new Metrics(this);
-			metrics.start();
-		} catch (IOException e) {
-			getLogger().warning("Could not start metrics service: " + e);
-		}
+        factory = new TradeFactory(this, config, itemControlManager);
 
-        PluginDescriptionFile pdf = getDescription();
-        String version = pdf.getVersion();
+        registerCommand("trade", "Basic trade command", List.of(), new CommandTrade(this));
+        movementTask = getServer().getScheduler().runTaskTimer(this, new MoveCheckerRunnable(factory, config), 20L, 30L);
 
-        getLogger().info("SimpleTrading v" + version + " enabled!");
-	}
-	
-	@Override
-	public void onDisable() {
-		isDisabling = true;
-		HandlerList.unregisterAll(this);
-		
-		if (movementTask != null) {
-			movementTask.cancel();
-		}
-		
-		if (factory != null) {
-			factory.stopAllTrades(StopCause.SERVER_SHUTDOWN);
-		}
-	}
+        getLogger().info("SimpleTrading v" + getPluginMeta().getVersion() + " enabled!");
+    }
 
-    private void checkConfigVersions(Configuration config, Path dataFolder) {
-        if (config.getInt("config-version", 0) < TradeConfiguration.CURRENT_CONFIG_VERSION) {
-            Path configSource = dataFolder.resolve(TradeConfiguration.DESTINATION_FILE_NAME);
-            Path configTarget = dataFolder.resolve("config_old.yml");
+    @Override
+    public void onDisable() {
+        isDisabling = true;
+        HandlerList.unregisterAll(this);
 
-            try {
-                Files.move(configSource, configTarget, StandardCopyOption.REPLACE_EXISTING);
-                URL configResource = getClass().getResource(TradeConfiguration.CLASSPATH_RESOURCE_NAME);
+        if (movementTask != null) {
+            movementTask.cancel();
+        }
 
-                copyResource(configResource, configSource.toFile());
-
-                ConsoleCommandSender sender = Bukkit.getConsoleSender();
-                sender.sendMessage(ChatColor.RED + "Due to a SimpleTrading update your old configuration has been renamed");
-                sender.sendMessage(ChatColor.RED + "to config_old.yml and a new one has been generated. Make sure to");
-                sender.sendMessage(ChatColor.RED + "apply your old changes to the new config!");
-            } catch (IOException e) {
-                getLogger().log(Level.SEVERE, "Could not create updated configuration due to an IOException", e);
-            }
+        if (factory != null) {
+            factory.stopAllTrades(StopCause.SERVER_SHUTDOWN);
         }
     }
 
-	public void initVaultHook() {
-		PluginManager pluginManager = getServer().getPluginManager();
-		if (!pluginManager.isPluginEnabled(VAULT_PLUGIN_NAME)) {
-			return;
-		}
-		
-		// Vault seems to exist so retrieve an provider instance of Economy.class
-		RegisteredServiceProvider<Economy> rsp = getServer().getServicesManager().getRegistration(Economy.class);
-		if (rsp == null) {
-			return;
-		}
-		
-		usingVault = true;
-		econ = rsp.getProvider();
-	}
-	
-	public void reload() {
-		reloadConfig();
-		config.loadByConfiguration(getConfig());
+    private void checkConfigVersion() {
+        Path dataFolder = getDataFolder().toPath();
+        Path configSource = dataFolder.resolve(TradeConfiguration.DESTINATION_FILE_NAME);
+        YamlConfiguration checkConfig = YamlConfiguration.loadConfiguration(configSource.toFile());
+
+        if (checkConfig.getInt("config-version", 0) >= TradeConfiguration.CURRENT_CONFIG_VERSION) {
+            return;
+        }
+
+        Path configTarget = dataFolder.resolve("config_old.yml");
+
+        try {
+            Files.move(configSource, configTarget, StandardCopyOption.REPLACE_EXISTING);
+            saveResource(TradeConfiguration.DESTINATION_FILE_NAME, true);
+            reloadConfig();
+
+            getLogger().warning("Due to a SimpleTrading update your old configuration has been renamed");
+            getLogger().warning("to config_old.yml and a new one has been generated. Make sure to");
+            getLogger().warning("apply your old changes to the new config!");
+        } catch (IOException e) {
+            getLogger().log(Level.SEVERE, "Could not create updated configuration due to an IOException", e);
+        }
+    }
+
+    public void reload() {
+        reloadConfig();
+        config.loadByConfiguration(getConfig());
         i18nManager.reloadAll(config.getLocale());
 
-		itemControlManager.updateValues(config);
+        itemControlManager.updateValues(config);
         worldControlManager.updateValues(config);
-	}
+    }
 
     public static void copyResource(URL resourceUrl, File destination) throws IOException {
         URLConnection connection = resourceUrl.openConnection();
+        connection.setUseCaches(false);
 
-        if (!destination.exists()) {
-            destination.getParentFile().mkdirs();
-            destination.createNewFile();
+        File parent = destination.getParentFile();
+        if (parent != null) {
+            parent.mkdirs();
         }
 
-        final int bufferSize = 1024;
-
-        try (InputStream inStream = connection.getInputStream();
-             FileOutputStream outStream = new FileOutputStream(destination)) {
-            byte[] buffer = new byte[bufferSize];
-
-            int read;
-            while ((read = inStream.read(buffer)) > 0) {
-                outStream.write(buffer, 0, read);
-            }
+        try (InputStream inStream = connection.getInputStream()) {
+            Files.copy(inStream, destination.toPath(), StandardCopyOption.REPLACE_EXISTING);
         }
     }
-	
-	public boolean usesVault() {
-		return usingVault;
-	}
-	
-	public Economy getEconomy() {
-		return econ;
-	}
 
-	public boolean isDisabling() {
-		return isDisabling;
-	}
+    public boolean usesVault() {
+        return getEconomy() != null;
+    }
 
-	public TradeFactory getFactory() {
-		return factory;
-	}
-	
-	public TradeConfiguration getConfiguration() {
-		return config;
-	}
+    /**
+     * Returns the Vault economy, looking it up lazily so that economy plugins
+     * which register their provider after SimpleTrading has been enabled are still found.
+     */
+    public Economy getEconomy() {
+        if (econ == null && getServer().getPluginManager().isPluginEnabled(VAULT_PLUGIN_NAME)) {
+            RegisteredServiceProvider<Economy> rsp = getServer().getServicesManager().getRegistration(Economy.class);
+            if (rsp != null) {
+                econ = rsp.getProvider();
+            }
+        }
+
+        return econ;
+    }
+
+    public boolean isDisabling() {
+        return isDisabling;
+    }
+
+    public TradeFactory getFactory() {
+        return factory;
+    }
+
+    public TradeConfiguration getConfiguration() {
+        return config;
+    }
 
     public WorldControlManager getWorldControlManager() {
         return worldControlManager;

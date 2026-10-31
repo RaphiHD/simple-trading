@@ -18,7 +18,7 @@
 package de.xaniox.simpletrading.i18n;
 
 import com.google.common.collect.Lists;
-import org.apache.commons.lang.Validate;
+import com.google.common.base.Preconditions;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
 
@@ -68,10 +68,10 @@ public class YMLControl extends ResourceBundle.Control {
 	@Override
 	public ResourceBundle newBundle(String baseName, Locale locale, String format, ClassLoader loader, boolean reload) throws IllegalAccessException,
 			InstantiationException, IOException {
-		Validate.notNull(baseName);
-		Validate.notNull(locale);
-		Validate.notNull(format);
-		Validate.notNull(loader);
+		Preconditions.checkNotNull(baseName);
+		Preconditions.checkNotNull(locale);
+		Preconditions.checkNotNull(format);
+		Preconditions.checkNotNull(loader);
 		
 		ResourceBundle bundle = null;
 		

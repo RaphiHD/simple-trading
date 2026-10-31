@@ -18,7 +18,7 @@
 package de.xaniox.simpletrading.i18n;
 
 import com.google.common.collect.Maps;
-import org.apache.commons.lang.Validate;
+import com.google.common.base.Preconditions;
 
 import java.util.Locale;
 import java.util.Map;
@@ -75,7 +75,7 @@ public class I18NManager {
 	}
 	
 	public void registerI18N(String name, I18N i18n) {
-		Validate.isTrue(!registered.containsKey(name), "I18N instance already registered");
+		Preconditions.checkArgument(!registered.containsKey(name), "I18N instance already registered");
 		
 		i18n.setParent(global);
 		registered.put(name, i18n);
@@ -89,7 +89,7 @@ public class I18NManager {
 	}
 	
 	public void unregisterI18N(String name) {
-		Validate.isTrue(registered.containsKey(name), "I18N instance is not registered");
+		Preconditions.checkArgument(registered.containsKey(name), "I18N instance is not registered");
 		
 		registered.remove(name);
 	}
