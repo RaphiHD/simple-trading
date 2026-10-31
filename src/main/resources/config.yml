@@ -4,11 +4,14 @@
 #
 # This is the main configuration file of SimpleTrading
 #
+# Items used in the trading inventory. Use modern item names
+# (https://jd.papermc.io/paper/org/bukkit/Material.html), e.g. 'lime_dye'.
+# Numeric ids and data values (like 'ink_sack:10') are no longer supported.
 blocks:
   # Block to accept trade
-  accept: 'ink_sack:10'
+  accept: 'lime_dye'
   # Block to decline trade
-  decline: 'ink_sack:1'
+  decline: 'red_dye'
   # Block to seperate inventories
   seperator: 'barrier'
   # Block for money status
@@ -16,12 +19,13 @@ blocks:
   # Block for money add/remove buttons
   money-add-remove: 'gold_nugget'
   # Block for xp status
-  xp-status: 'exp_bottle'
+  xp-status: 'experience_bottle'
   # Block for xp add/remove buttons
-  xp-add-remove: 'exp_bottle'
+  xp-add-remove: 'experience_bottle'
 inventory:
   # Specifies the inventory-gui name while trading
-  # Note: Use @p as a placeholder for the playername
+  # Note: Use @p as a placeholder for the playername.
+  # Legacy color codes like &6 are supported.
   name: 'SimpleTrading - @p'
 
   # These key-value sets define the amount of money a
@@ -37,7 +41,7 @@ inventory:
   exp-value-3: 100
 localization:
   # The language this plugin is using. Currently
-  # an english, german, russian, french and chinese (taiwan)
+  # an english, german, russian, french, italian and chinese (taiwan)
   # translation is available.
   #
   # Possible values:
@@ -45,12 +49,13 @@ localization:
   # de_DE - German
   # ru_RU - Russian (translated by nixbeast)
   # fr_FR - French (translated by MisterJeu)
+  # it_IT - Italian
   # zh_TW - Chinese / Taiwan (translated by TWKEVINXD)
   #
   # If you want to help with the translation of SimpleTrading
   # feel free to translate it into your own language.
   # To get started, use the file located under
-  # /language/locale_en_US.yml as a template for your translation.
+  # /i18n/locale_en_US.yml as a template for your translation.
   # Your translated file should have the following
   # format: locale_<language-code>_<country-code>.yml
   locale: en_US
@@ -84,7 +89,7 @@ item-control:
   control-mode: blacklist
   
   # A list of items that cannot be traded or can be traded
-  # depending on your control-mode setting
+  # depending on your control-mode setting (modern item names)
   item-list:
   - 'cake'
   
@@ -102,4 +107,4 @@ world-control:
   world-list:
   - ''
 
-config-version: 7
+config-version: 8

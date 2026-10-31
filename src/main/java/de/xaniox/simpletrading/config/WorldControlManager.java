@@ -34,7 +34,7 @@ public class WorldControlManager extends ControlManager<World> {
     public WorldControlManager(TradeConfiguration config) {
         super(config.getWorldControlMode());
 
-        this.worldList = config.getWorldControlList();
+        updateValues(config);
     }
 
     @Override

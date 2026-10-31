@@ -19,13 +19,10 @@ package de.xaniox.simpletrading.i18n;
 
 import com.google.common.collect.Lists;
 import de.xaniox.simpletrading.SimpleTrading;
+import de.xaniox.simpletrading.Text;
+import net.kyori.adventure.text.Component;
 import org.bukkit.configuration.InvalidConfigurationException;
 import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.configuration.file.YamlConfigurationOptions;
-import org.bukkit.configuration.file.YamlConstructor;
-import org.bukkit.configuration.file.YamlRepresenter;
-import org.yaml.snakeyaml.DumperOptions;
-import org.yaml.snakeyaml.Yaml;
 
 import java.io.*;
 import java.net.URISyntaxException;
@@ -44,22 +41,14 @@ import java.util.logging.Logger;
 public class I18N {
 	
 	public static final Charset UTF8_CHARSET = StandardCharsets.UTF_8;
-	private static final List<String> DEFAULT_CLASSPATH_LOCALE_RESOURCES = Lists.newArrayList("locale_en_US.yml", "locale_de_DE.yml");
+	private static final List<String> DEFAULT_CLASSPATH_LOCALE_RESOURCES = List.of(
+		"locale_en_US.yml", "locale_de_DE.yml", "locale_fr_FR.yml", "locale_it_IT.yml", "locale_ru_RU.yml", "locale_zh_TW.yml");
 	private static final String FALLBACK_FILE = "locale_en_US.yml";
 	private static final String FILE_PROTOCOL = "file";
 	private static final String JAR_EXTENSION = ".jar";
 	private static final String JAR_ENTRY_SEPERATOR = "/";
 	private static final String LOCALE_FILE_REGEX = "locale_[a-z]{2}(_[A-Z]{2})?\\.yml";
-	private static final YamlRepresenter YAML_REPRESENTER = new YamlRepresenter();
-	private static final DumperOptions DUMPER_OPTIONS = new DumperOptions();
 	static final Locale FALLBACK_LOCALE = Locale.US;
-	
-	static {
-		DUMPER_OPTIONS.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
-		DUMPER_OPTIONS.setAllowUnicode(true);
-		
-		YAML_REPRESENTER.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
-	}
 	
 	private Locale locale;
 	private ClassLoader classLoader;
@@ -198,7 +187,12 @@ public class I18N {
 		}
 		
 		// Check if all messages exist, and add missing messages to the file e.g validate and replace
-		for (File localeFile : fileSystemFolder.listFiles()) {
+		File[] localeFiles = fileSystemFolder.listFiles();
+		if (localeFiles == null) {
+			return;
+		}
+		
+		for (File localeFile : localeFiles) {
 			//Check if the file is a localization file
 			if (!localeFile.getName().matches(LOCALE_FILE_REGEX)) {
 				continue;
@@ -257,18 +251,8 @@ public class I18N {
 			}
 			
 			if (changesToCommit) {
-				//Manually write the configuration as Bukkit's
-				//configuration API does not provide custom encoding when
-				//the standard charset does not support unicode...
-				final YamlConfigurationOptions options = fileConfig.options();
-				DUMPER_OPTIONS.setIndent(options.indent());
-
-				final Yaml yaml = new Yaml(new YamlConstructor(), YAML_REPRESENTER, DUMPER_OPTIONS);
-				
-				try (OutputStreamWriter writer = new OutputStreamWriter(new FileOutputStream(localeFile), UTF8_CHARSET)) {
-					yaml.dump(fileConfig.getValues(false), writer);
-					writer.flush();
-				}
+				// YamlConfiguration always saves files as UTF-8
+				fileConfig.save(localeFile);
 			}
 		}
 	}
@@ -289,6 +273,13 @@ public class I18N {
 		}
 		
 		return msg;
+	}
+	
+	/**
+	 * Returns the message as a component, parsing its legacy {@code &} color codes
+	 */
+	public Component get(String key) {
+		return Text.of(getString(key));
 	}
 	
 	public ParsedMessage getVarString(String key) {

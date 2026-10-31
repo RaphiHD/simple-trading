@@ -1,8 +1,41 @@
-name: ${project.name}
-main: ${mainClass}
-version: ${project.version}
-author: ${project.author}
+name: SimpleTrading
+main: de.xaniox.simpletrading.SimpleTrading
+version: '${version}'
+description: '${description}'
+author: xaniox
+api-version: '26.2'
+softdepend: [Vault]
 
-commands:
-  trade:
-    description: Basic trade command
+permissions:
+  simpletrading.*:
+    description: Grants every SimpleTrading permission
+    default: op
+    children:
+      simpletrading.trade.initiate: true
+      simpletrading.trade.initiate.shift: true
+      simpletrading.trade.accept: true
+      simpletrading.trade.accept.shift: true
+      simpletrading.trade.deny: true
+      simpletrading.reload: true
+      simpletrading.sign: true
+  simpletrading.trade.initiate:
+    description: Request a trade with /trade <player>
+    default: op
+  simpletrading.trade.initiate.shift:
+    description: Request a trade by shift-right-clicking a player
+    default: op
+  simpletrading.trade.accept:
+    description: Accept a trade with /trade accept
+    default: op
+  simpletrading.trade.accept.shift:
+    description: Accept a trade by shift-right-clicking the requesting player
+    default: op
+  simpletrading.trade.deny:
+    description: Decline a trade request with /trade decline
+    default: op
+  simpletrading.reload:
+    description: Reload the configuration with /trade reload
+    default: op
+  simpletrading.sign:
+    description: Mark the held item with a configured lore using /trade sign
+    default: op

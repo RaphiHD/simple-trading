@@ -17,73 +17,83 @@
  */
 package de.xaniox.simpletrading.config;
 
-import com.google.common.collect.Lists;
 import org.bukkit.Material;
 import org.bukkit.configuration.Configuration;
 import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.inventory.ItemStack;
+import org.bukkit.configuration.MemoryConfiguration;
 
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
-public class TradeConfiguration { 
-	
-	private static final String BLOCKDATA_SEPERATOR = ":";
-	private static final String PLAYERNAME_PLACEHOLDER = "@p";
+public class TradeConfiguration {
+
+    private static final String PLAYERNAME_PLACEHOLDER = "@p";
+    /** Matches a trailing legacy data value like {@code :10} in {@code ink_sack:10}. */
+    private static final Pattern LEGACY_DATA_SUFFIX = Pattern.compile(":\\d+$");
     public static final int NO_MAX_DISTANCE = -1;
-    public static final int CURRENT_CONFIG_VERSION = 7;
+    public static final int CURRENT_CONFIG_VERSION = 8;
     public static final String DESTINATION_FILE_NAME = "config.yml";
-    public static final String CLASSPATH_RESOURCE_NAME = "/config.yml";
 
-    private ItemStackData acceptBlockData;
-	private ItemStackData declineBlockData;
-	private ItemStackData seperatorBlockData;
-    private ItemStackData moneyStatusBlockData;
-    private ItemStackData moneyAddRemoveBlockData;
-    private ItemStackData xpStatusBlockData;
-    private ItemStackData xpAddRemoveBlockData;
+    private final Logger logger;
+
+    private Material acceptMaterial;
+    private Material declineMaterial;
+    private Material seperatorMaterial;
+    private Material moneyStatusMaterial;
+    private Material moneyAddRemoveMaterial;
+    private Material xpStatusMaterial;
+    private Material xpAddRemoveMaterial;
     private Locale locale;
-	private String inventoryName;
+    private String inventoryName;
     private int moneyValue1;
     private int moneyValue2;
     private int moneyValue3;
     private int expValue1;
     private int expValue2;
     private int expValue3;
-	private int maximumTradeDistance;
-	private boolean allowCreativeTrading;
-	private int timeout;
-	private boolean useXpTrading;
+    private int maximumTradeDistance;
+    private boolean allowCreativeTrading;
+    private int timeout;
+    private boolean useXpTrading;
     private boolean useMoneyTrading;
     private boolean useShiftTrading;
     private int maxMoneyTrading;
-	private boolean abortOnDecline;
-	private ControlMode itemControlMode;
-	private List<ItemStackData> itemControlItems;
-	private List<String> itemControlLores;
+    private boolean abortOnDecline;
+    private ControlMode itemControlMode;
+    private Set<Material> itemControlItems;
+    private List<String> itemControlLores;
     private ControlMode worldControlMode;
     private List<String> worldControlList;
-	
-	public TradeConfiguration(Configuration config) {
-		loadByConfiguration(config);
-	}
-	
-	public void loadByConfiguration(Configuration config) {
-		ConfigurationSection blockSection = config.getConfigurationSection("blocks");
-		acceptBlockData = ItemStackData.fromConfigString(blockSection.getString("accept", "ink_sack:10"), BLOCKDATA_SEPERATOR);
-		declineBlockData = ItemStackData.fromConfigString(blockSection.getString("decline", "ink_sack:1"), BLOCKDATA_SEPERATOR);
-		seperatorBlockData = ItemStackData.fromConfigString(blockSection.getString("seperator", "barrier"), BLOCKDATA_SEPERATOR);
-        moneyStatusBlockData = ItemStackData.fromConfigString(blockSection.getString("money-status", "gold_nugget"), BLOCKDATA_SEPERATOR);
-        moneyAddRemoveBlockData = ItemStackData.fromConfigString(blockSection.getString("money-add-remove", "gold_nugget"), BLOCKDATA_SEPERATOR);
-        xpStatusBlockData = ItemStackData.fromConfigString(blockSection.getString("xp-status", "exp_bottle"), BLOCKDATA_SEPERATOR);
-        xpAddRemoveBlockData = ItemStackData.fromConfigString(blockSection.getString("xp-add-remove", "exp_bottle"), BLOCKDATA_SEPERATOR);
 
-        ConfigurationSection localizationSection = config.getConfigurationSection("localization");
-        String localeString = localizationSection.getString("locale");
-        locale = parseLocale(localeString);
+    public TradeConfiguration(Configuration config, Logger logger) {
+        this.logger = logger;
+        loadByConfiguration(config);
+    }
 
-		ConfigurationSection inventorySection = config.getConfigurationSection("inventory");
-		inventoryName = inventorySection.getString("name", "SimpleTrading - @p");
+    private static ConfigurationSection section(Configuration config, String name) {
+        ConfigurationSection section = config.getConfigurationSection(name);
+        return section != null ? section : new MemoryConfiguration();
+    }
+
+    public void loadByConfiguration(Configuration config) {
+        ConfigurationSection blockSection = section(config, "blocks");
+        acceptMaterial = readMaterial(blockSection, "accept", Material.LIME_DYE);
+        declineMaterial = readMaterial(blockSection, "decline", Material.RED_DYE);
+        seperatorMaterial = readMaterial(blockSection, "seperator", Material.BARRIER);
+        moneyStatusMaterial = readMaterial(blockSection, "money-status", Material.GOLD_NUGGET);
+        moneyAddRemoveMaterial = readMaterial(blockSection, "money-add-remove", Material.GOLD_NUGGET);
+        xpStatusMaterial = readMaterial(blockSection, "xp-status", Material.EXPERIENCE_BOTTLE);
+        xpAddRemoveMaterial = readMaterial(blockSection, "xp-add-remove", Material.EXPERIENCE_BOTTLE);
+
+        ConfigurationSection localizationSection = section(config, "localization");
+        locale = parseLocale(localizationSection.getString("locale", "en_US"));
+
+        ConfigurationSection inventorySection = section(config, "inventory");
+        inventoryName = inventorySection.getString("name", "SimpleTrading - @p");
         moneyValue1 = inventorySection.getInt("money-value-1", 50);
         moneyValue2 = inventorySection.getInt("money-value-2", 100);
         moneyValue3 = inventorySection.getInt("money-value-3", 500);
@@ -91,78 +101,105 @@ public class TradeConfiguration {
         expValue2 = inventorySection.getInt("exp-value-2", 50);
         expValue3 = inventorySection.getInt("exp-value-3", 100);
 
-		ConfigurationSection globalSection = config.getConfigurationSection("global");
-		maximumTradeDistance = globalSection.getInt("max-distance", 15);
-		allowCreativeTrading = globalSection.getBoolean("creative-trading", true);
-		timeout = globalSection.getInt("timeout", 60);
-		useXpTrading = globalSection.getBoolean("use-xp-trading", true);
+        ConfigurationSection globalSection = section(config, "global");
+        maximumTradeDistance = globalSection.getInt("max-distance", 15);
+        allowCreativeTrading = globalSection.getBoolean("creative-trading", true);
+        timeout = globalSection.getInt("timeout", 60);
+        useXpTrading = globalSection.getBoolean("use-xp-trading", true);
         useMoneyTrading = globalSection.getBoolean("use-money-trading", true);
         useShiftTrading = globalSection.getBoolean("use-shift-trading", true);
         maxMoneyTrading = globalSection.getInt("max-money-trading", -1);
-		abortOnDecline = globalSection.getBoolean("abort-on-decline", false);
-		
-		ConfigurationSection itemControlSection = config.getConfigurationSection("item-control");
-		itemControlMode = ControlMode.getMode(itemControlSection.getString("control-mode"), ControlMode.BLACKLIST);
-		List<String> controlItemStringList = itemControlSection.getStringList("item-list");
-		itemControlItems = Lists.newArrayList();
-		
-		for (String controlItemString : controlItemStringList) {
-			itemControlItems.add(ItemStackData.fromConfigString(controlItemString, BLOCKDATA_SEPERATOR));
-		}
-		
-		itemControlLores = itemControlSection.getStringList("item-lore");
+        abortOnDecline = globalSection.getBoolean("abort-on-decline", false);
 
-        ConfigurationSection worldControlSection = config.getConfigurationSection("world-control");
+        ConfigurationSection itemControlSection = section(config, "item-control");
+        itemControlMode = ControlMode.getMode(itemControlSection.getString("control-mode"), ControlMode.BLACKLIST);
+        itemControlItems = EnumSet.noneOf(Material.class);
+
+        for (String controlItemString : itemControlSection.getStringList("item-list")) {
+            Material material = parseMaterial(controlItemString);
+            if (material == null) {
+                logger.warning("Unknown item \"" + controlItemString + "\" in item-control.item-list, ignoring it");
+                continue;
+            }
+
+            itemControlItems.add(material);
+        }
+
+        itemControlLores = itemControlSection.getStringList("item-lore");
+
+        ConfigurationSection worldControlSection = section(config, "world-control");
         worldControlMode = ControlMode.getMode(worldControlSection.getString("control-mode"), ControlMode.BLACKLIST);
         worldControlList = worldControlSection.getStringList("world-list");
-	}
+    }
+
+    private Material readMaterial(ConfigurationSection section, String key, Material def) {
+        String value = section.getString(key);
+        if (value == null) {
+            return def;
+        }
+
+        Material material = parseMaterial(value);
+        if (material == null) {
+            logger.warning("Unknown item \"" + value + "\" for blocks." + key + ", using " + def.name().toLowerCase(Locale.ROOT) + " instead");
+            return def;
+        }
+
+        return material;
+    }
+
+    /**
+     * Parses a modern item name such as {@code lime_dye} or {@code minecraft:lime_dye}.
+     * A legacy data suffix like {@code :10} is ignored.
+     *
+     * @return the item, or null if the name is unknown or not an item
+     */
+    static Material parseMaterial(String value) {
+        String name = LEGACY_DATA_SUFFIX.matcher(value.trim()).replaceFirst("");
+        Material material = Material.matchMaterial(name);
+
+        if (material == null || !material.isItem() || material.isAir()) {
+            return null;
+        }
+
+        return material;
+    }
 
     private static Locale parseLocale(String localeString) {
         String[] parts = localeString.split("_");
 
         String language = parts[0];
-        String country = parts.length > 1 ? parts[1] : null;
-        String variant = parts.length > 2 ? parts[2] : null;
+        String country = parts.length > 1 ? parts[1] : "";
+        String variant = parts.length > 2 ? parts[2] : "";
 
-        Locale locale;
-
-        if (country == null && variant == null) {
-            locale = new Locale(language);
-        } else if (country != null && variant == null) {
-            locale = new Locale(language, country);
-        } else {
-            locale = new Locale(language, country, variant);
-        }
-
-        return locale;
-    }
-	
-	public ItemStackData getAcceptBlockData() {
-		return acceptBlockData;
-	}
-	
-	public ItemStackData getDeclineBlockData() {
-		return declineBlockData;
-	}
-	
-	public ItemStackData getSeperatorBlockData() {
-		return seperatorBlockData;
-	}
-
-    public ItemStackData getMoneyStatusBlockData() {
-        return moneyStatusBlockData;
+        return Locale.of(language, country, variant);
     }
 
-    public ItemStackData getMoneyAddRemoveBlockData() {
-        return moneyAddRemoveBlockData;
+    public Material getAcceptMaterial() {
+        return acceptMaterial;
     }
 
-    public ItemStackData getXpStatusBlockData() {
-        return xpStatusBlockData;
+    public Material getDeclineMaterial() {
+        return declineMaterial;
     }
 
-    public ItemStackData getXpAddRemoveBlockData() {
-        return xpAddRemoveBlockData;
+    public Material getSeperatorMaterial() {
+        return seperatorMaterial;
+    }
+
+    public Material getMoneyStatusMaterial() {
+        return moneyStatusMaterial;
+    }
+
+    public Material getMoneyAddRemoveMaterial() {
+        return moneyAddRemoveMaterial;
+    }
+
+    public Material getXpStatusMaterial() {
+        return xpStatusMaterial;
+    }
+
+    public Material getXpAddRemoveMaterial() {
+        return xpAddRemoveMaterial;
     }
 
     public Locale getLocale() {
@@ -170,8 +207,8 @@ public class TradeConfiguration {
     }
 
     public String getInventoryName(String nameReplacement) {
-		return inventoryName.replace(PLAYERNAME_PLACEHOLDER, nameReplacement);
-	}
+        return inventoryName.replace(PLAYERNAME_PLACEHOLDER, nameReplacement);
+    }
 
     public int getMoneyValue1() {
         return moneyValue1;
@@ -198,20 +235,20 @@ public class TradeConfiguration {
     }
 
     public int getMaximumTradeDistance() {
-		return maximumTradeDistance;
-	}
-	
-	public boolean allowsCreativeTrading() {
-		return allowCreativeTrading;
-	}
-	
-	public int getTimeout() {
-		return timeout;
-	}
-	
-	public boolean usesXpTrading() {
-		return useXpTrading;
-	}
+        return maximumTradeDistance;
+    }
+
+    public boolean allowsCreativeTrading() {
+        return allowCreativeTrading;
+    }
+
+    public int getTimeout() {
+        return timeout;
+    }
+
+    public boolean usesXpTrading() {
+        return useXpTrading;
+    }
 
     public boolean usesMoneyTrading() {
         return useMoneyTrading;
@@ -225,21 +262,21 @@ public class TradeConfiguration {
         return maxMoneyTrading;
     }
 
-	public boolean isAbortOnDecline() {
-		return abortOnDecline;
-	}
+    public boolean isAbortOnDecline() {
+        return abortOnDecline;
+    }
 
-	public ControlMode getItemControlMode() {
-		return itemControlMode;
-	}
-	
-	public List<ItemStackData> getItemControlList() {
-		return itemControlItems;
-	}
-	
-	public List<String> getItemControlLoreList() {
-		return itemControlLores;
-	}
+    public ControlMode getItemControlMode() {
+        return itemControlMode;
+    }
+
+    public Set<Material> getItemControlList() {
+        return itemControlItems;
+    }
+
+    public List<String> getItemControlLoreList() {
+        return itemControlLores;
+    }
 
     public ControlMode getWorldControlMode() {
         return worldControlMode;
@@ -248,71 +285,5 @@ public class TradeConfiguration {
     public List<String> getWorldControlList() {
         return worldControlList;
     }
-	
-	public static class ItemStackData {
-		
-		private Material material;
-		private byte data;
-		
-		public ItemStackData(Material material, byte data) {
-			this.material = material;
-			this.data = data;
-		}
-		
-		@SuppressWarnings("deprecation")
-		public static ItemStackData fromConfigString(String configStr, String seperator) {
-			String[] components = configStr.split(seperator);
-			String materialString = components[0];
-			Material material = null;
-			byte data = 0;
-			
-			for (Material mat : Material.values()) {
-				if (mat.name().equalsIgnoreCase(materialString) ||
-					mat.name().replace("_", "").equalsIgnoreCase(materialString)) {
-					material = mat;
-				}
-			}
-			
-			if (material == null) {
-				try {
-					int legacyId = Integer.parseInt(materialString);
-					material = Material.getMaterial(legacyId);
-				} catch (NumberFormatException nfe) {
-					// Give up
-					throw new IllegalArgumentException("Config-String \"" + configStr + "\" material/block-id is invalid");
-				}
-			}
-			
-			if (components.length > 1) {
-				try {
-					int legacyData = Integer.parseInt(components[1]);
-					data = (byte) legacyData;
-				} catch (NumberFormatException nfe) {
-					throw new IllegalArgumentException("Config-String \"" + configStr + "\" is invalid: Illegal block data");
-				}
-			}
-			
-			return new ItemStackData(material, data);
-		}
-		
-		public Material getMaterial() {
-			return material;
-		}
-		
-		public byte getData() {
-			return data;
-		}
 
-		public ItemStack newItemStack() {
-			return newItemStack(1);
-		}
-		
-		@SuppressWarnings("deprecation")
-		public ItemStack newItemStack(int amount) {
-			ItemStack stack = new ItemStack(material.getId(), amount, data);
-			return stack;
-		}
-		
-	}
-	
 }

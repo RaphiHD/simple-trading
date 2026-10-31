@@ -17,220 +17,274 @@
  */
 package de.xaniox.simpletrading;
 
-import com.google.common.collect.Lists;
 import de.xaniox.simpletrading.config.TradeConfiguration;
 import de.xaniox.simpletrading.config.WorldControlManager;
 import de.xaniox.simpletrading.i18n.I18N;
 import de.xaniox.simpletrading.i18n.I18NManager;
 import de.xaniox.simpletrading.i18n.Messages;
+import io.papermc.paper.command.brigadier.BasicCommand;
+import io.papermc.paper.command.brigadier.CommandSourceStack;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.GameMode;
-import org.bukkit.command.Command;
-import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.plugin.PluginDescriptionFile;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 
-public class CommandTrade implements CommandExecutor {
+public class CommandTrade implements BasicCommand {
+
+    private static final List<String> SUBCOMMANDS = List.of("accept", "decline", "reload", "sign", "version");
 
     private final I18N i18n = I18NManager.getGlobal();
-	private SimpleTrading main;
-	
-	public CommandTrade(SimpleTrading main) {
-		this.main = main;
-	}
-	
-	@Override
-	public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
-		if (!cmd.getName().equalsIgnoreCase("trade")) {
-			// This command doesn't belong to us
-			return true;
-		}
-		
-		if (!(sender instanceof Player)) {
-			sender.sendMessage(i18n.getString(Messages.Command.ONLY_PLAYER));
-			return true;
-		}
-		
-		Player player = (Player) sender;
-		TradeFactory factory = main.getFactory();
+    private final SimpleTrading main;
+
+    public CommandTrade(SimpleTrading main) {
+        this.main = main;
+    }
+
+    @Override
+    public void execute(CommandSourceStack source, String[] args) {
+        CommandSender sender = source.getSender();
+
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(i18n.get(Messages.Command.ONLY_PLAYER));
+            return;
+        }
+
+        TradeFactory factory = main.getFactory();
         WorldControlManager worldControlManager = main.getWorldControlManager();
 
-		if (args.length < 1) {
+        if (args.length < 1) {
             player.sendMessage(i18n.getVarString(Messages.Command.USAGE)
                 .setVariable("usage", "/trade <player>")
-                .toString());
-			return true;
-		}
-		
-		if (args[0].equalsIgnoreCase("accept") || args[0].equalsIgnoreCase("a")) {
-			if (!player.hasPermission(Permissions.TRADE_ACCEPT.getPermission())) {
-                player.sendMessage(i18n.getString(Messages.Command.INSUFFICIENT_PERMISSION));
-				return true;
-			}
-			
-			Trade trade = factory.getTrade(player);
-			if (trade == null || trade.getPartner().getPlayer() != player) {
-				player.sendMessage(i18n.getVarString(Messages.General.NO_PENDING_REQUESTS)
-                    .setVariable("player", player.getName())
-                    .toString());
-				return true;
-			}
-			
-			Player other = trade.getInitiator().getPlayer() == player ? trade.getPartner().getPlayer() : trade.getInitiator().getPlayer();
-			
-			int maxDistance = main.getConfiguration().getMaximumTradeDistance();
-			if ((player.getWorld() != other.getWorld() || player.getLocation().distanceSquared(other.getLocation()) > maxDistance * 2)
-                    && maxDistance != TradeConfiguration.NO_MAX_DISTANCE) {
-                player.sendMessage(i18n.getString(Messages.Command.PARTNER_TOO_FAR_AWAY));
-				return true;
-			}
+                .toComponent());
+            return;
+        }
 
-            if (!worldControlManager.isAllowed(player.getWorld())) {
-                player.sendMessage(i18n.getString(Messages.Command.CANNOT_TRADE_IN_WORLD));
-                return true;
+        String subcommand = args[0].toLowerCase(Locale.ROOT);
+
+        switch (subcommand) {
+            case "accept", "a" -> {
+                if (!player.hasPermission(Permissions.TRADE_ACCEPT.getPermission())) {
+                    player.sendMessage(i18n.get(Messages.Command.INSUFFICIENT_PERMISSION));
+                    return;
+                }
+
+                Trade trade = factory.getTrade(player);
+                if (trade == null || trade.getPartner().getPlayer() != player) {
+                    player.sendMessage(i18n.getVarString(Messages.General.NO_PENDING_REQUESTS)
+                        .setVariable("player", player.getName())
+                        .toComponent());
+                    return;
+                }
+
+                Player other = trade.getInitiator().getPlayer();
+
+                if (!isInRange(player, other)) {
+                    player.sendMessage(i18n.get(Messages.Command.PARTNER_TOO_FAR_AWAY));
+                    return;
+                }
+
+                if (!worldControlManager.isAllowed(player.getWorld())) {
+                    player.sendMessage(i18n.get(Messages.Command.CANNOT_TRADE_IN_WORLD));
+                    return;
+                }
+
+                if (!worldControlManager.isAllowed(other.getWorld())) {
+                    player.sendMessage(i18n.get(Messages.Command.CANNOT_TRADE_IN_WORLD_PARTNER));
+                    return;
+                }
+
+                factory.acceptTrade(player);
             }
+            case "decline", "d" -> {
+                if (!player.hasPermission(Permissions.TRADE_DENY.getPermission())) {
+                    player.sendMessage(i18n.get(Messages.Command.INSUFFICIENT_PERMISSION));
+                    return;
+                }
 
-            if (!worldControlManager.isAllowed(other.getWorld())) {
-                player.sendMessage(i18n.getString(Messages.Command.CANNOT_TRADE_IN_WORLD_PARTNER));
-                return true;
+                Trade trade = factory.getTrade(player);
+                if (trade == null || trade.getPartner().getPlayer() != player) {
+                    player.sendMessage(i18n.getVarString(Messages.General.NO_PENDING_REQUESTS)
+                        .setVariable("player", player.getName())
+                        .toComponent());
+                    return;
+                }
+
+                // declineTrade notifies the initiator
+                factory.declineTrade(player);
+                player.sendMessage(i18n.getVarString(Messages.General.TRADE_DECLINED)
+                    .setVariable("player", trade.getInitiator().getName())
+                    .toComponent());
             }
-			
-			factory.acceptTrade(player);
-		} else if (args[0].equalsIgnoreCase("decline") || args[0].equalsIgnoreCase("d")) {
-            if (!player.hasPermission(Permissions.TRADE_DENY.getPermission())) {
-                player.sendMessage(i18n.getString(Messages.Command.INSUFFICIENT_PERMISSION));
-                return true;
+            case "reload" -> {
+                if (!player.hasPermission(Permissions.RELOAD.getPermission())) {
+                    player.sendMessage(i18n.get(Messages.Command.INSUFFICIENT_PERMISSION));
+                    return;
+                }
+
+                main.reload();
+                player.sendMessage(i18n.get(Messages.Command.CONFIGURATIONS_RELOADED));
             }
+            case "sign" -> sign(player, args);
+            case "version" -> player.sendMessage(Component.text()
+                .append(Component.text("SimpleTrading ", NamedTextColor.GOLD, TextDecoration.BOLD))
+                .append(Component.text("v" + main.getPluginMeta().getVersion(), NamedTextColor.GREEN))
+                .append(Component.text(" by ", NamedTextColor.GRAY))
+                .append(Component.text("Matze", NamedTextColor.GREEN))
+                .append(Component.text(" (@xaniox/@matzefratze123)", NamedTextColor.GRAY)));
+            default -> initiate(player, args[0]);
+        }
+    }
 
-			Trade trade = factory.getTrade(player);
-			if (trade == null || trade.getPartner().getPlayer() != player) {
-				player.sendMessage(i18n.getVarString(Messages.General.NO_PENDING_REQUESTS)
-                    .setVariable("player", player.getName())
-                    .toString());
-				return true;
-			}
-			
-			factory.declineTrade(player);
-			trade.getInitiator().getPlayer().sendMessage(i18n.getVarString(Messages.General.TRADE_REQUEST_DECLINED)
-                .setVariable("player", player.getName())
-                .toString());
-			player.sendMessage(i18n.getVarString(Messages.General.TRADE_DECLINED)
-                .setVariable("player", trade.getInitiator().getName())
-                .toString());
-		} else if (args[0].equalsIgnoreCase("reload")) {
-			if (!player.hasPermission(Permissions.RELOAD.getPermission())) {
-                player.sendMessage(i18n.getString(Messages.Command.INSUFFICIENT_PERMISSION));
-				return true;
-			}
-			
-			main.reload();
-            player.sendMessage(i18n.getString(Messages.Command.CONFIGURATIONS_RELOADED));
-		} else if (args[0].equalsIgnoreCase("sign")) {
-            if (!player.hasPermission(Permissions.SIGN.getPermission())) {
-                player.sendMessage(i18n.getString(Messages.Command.INSUFFICIENT_PERMISSION));
-                return true;
+    private void sign(Player player, String[] args) {
+        if (!player.hasPermission(Permissions.SIGN.getPermission())) {
+            player.sendMessage(i18n.get(Messages.Command.INSUFFICIENT_PERMISSION));
+            return;
+        }
+
+        int loreIndex = 0;
+
+        if (args.length > 1) {
+            try {
+                loreIndex = Integer.parseInt(args[1]) - 1;
+            } catch (NumberFormatException nfe) {
+                player.sendMessage(i18n.getVarString(Messages.Command.NOT_A_NUMBER)
+                    .setVariable("number", args[1])
+                    .toComponent());
+                return;
             }
+        }
 
-            int loreIndex = 0;
+        List<String> lores = main.getConfiguration().getItemControlLoreList();
+        if (loreIndex < 0 || loreIndex >= lores.size()) {
+            player.sendMessage(i18n.getVarString(Messages.Command.NO_LORE_WITH_NUMBER)
+                .setVariable("number", String.valueOf(loreIndex + 1))
+                .toComponent());
+            return;
+        }
 
-            if (args.length > 1) {
-                try {
-                    loreIndex = Integer.parseInt(args[1]) - 1;
-                } catch (NumberFormatException nfe) {
-                    player.sendMessage(i18n.getVarString(Messages.Command.NOT_A_NUMBER)
-                            .setVariable("number", args[1])
-                            .toString());
-                    return true;
+        ItemStack stack = player.getInventory().getItemInMainHand();
+        if (stack.isEmpty()) {
+            player.sendMessage(i18n.get(Messages.Command.NO_ITEM_IN_HAND));
+            return;
+        }
+
+        ItemMeta meta = stack.getItemMeta();
+        List<Component> itemLore = meta.lore();
+        itemLore = itemLore == null ? new ArrayList<>() : new ArrayList<>(itemLore);
+        itemLore.add(Text.item(lores.get(loreIndex)));
+        meta.lore(itemLore);
+        stack.setItemMeta(meta);
+
+        player.getInventory().setItemInMainHand(stack);
+        player.sendMessage(i18n.get(Messages.Command.LORE_APPLIED));
+    }
+
+    private void initiate(Player player, String partnerName) {
+        if (!player.hasPermission(Permissions.TRADE_INITIATE.getPermission())) {
+            player.sendMessage(i18n.get(Messages.Command.INSUFFICIENT_PERMISSION));
+            return;
+        }
+
+        Player tradePartner = Bukkit.getPlayer(partnerName);
+        if (tradePartner == null || !player.canSee(tradePartner)) {
+            player.sendMessage(i18n.getVarString(Messages.Command.PLAYER_NOT_FOUND)
+                .setVariable("player", partnerName)
+                .toComponent());
+            return;
+        }
+
+        if (tradePartner == player) {
+            player.sendMessage(i18n.get(Messages.Command.NO_SELF_TRADE));
+            return;
+        }
+
+        if (!main.getConfiguration().allowsCreativeTrading()
+                && (player.getGameMode() == GameMode.CREATIVE || tradePartner.getGameMode() == GameMode.CREATIVE)) {
+            player.sendMessage(i18n.getVarString(Messages.General.PARTNER_IN_CREATIVE)
+                .setVariable("player", tradePartner.getName())
+                .toComponent());
+            return;
+        }
+
+        if (!isInRange(player, tradePartner)) {
+            player.sendMessage(i18n.get(Messages.Command.PARTNER_TOO_FAR_AWAY));
+            return;
+        }
+
+        WorldControlManager worldControlManager = main.getWorldControlManager();
+        if (!worldControlManager.isAllowed(player.getWorld())) {
+            player.sendMessage(i18n.get(Messages.Command.CANNOT_TRADE_IN_WORLD));
+            return;
+        }
+
+        if (!worldControlManager.isAllowed(tradePartner.getWorld())) {
+            player.sendMessage(i18n.get(Messages.Command.CANNOT_TRADE_IN_WORLD_PARTNER));
+            return;
+        }
+
+        main.getFactory().initiateTrade(player, tradePartner);
+    }
+
+    private boolean isInRange(Player player, Player other) {
+        int maxDistance = main.getConfiguration().getMaximumTradeDistance();
+        if (maxDistance == TradeConfiguration.NO_MAX_DISTANCE) {
+            return true;
+        }
+
+        return player.getWorld().equals(other.getWorld())
+            && player.getLocation().distanceSquared(other.getLocation()) <= (double) maxDistance * maxDistance;
+    }
+
+    @Override
+    public Collection<String> suggest(CommandSourceStack source, String[] args) {
+        String current = args.length == 0 ? "" : args[args.length - 1].toLowerCase(Locale.ROOT);
+        CommandSender sender = source.getSender();
+
+        if (args.length <= 1) {
+            List<String> suggestions = new ArrayList<>();
+            for (String subcommand : SUBCOMMANDS) {
+                if (subcommand.startsWith(current)) {
+                    suggestions.add(subcommand);
                 }
             }
 
-            List<String> lores = main.getConfiguration().getItemControlLoreList();
-            if (loreIndex >= lores.size()) {
-                player.sendMessage(i18n.getVarString(Messages.Command.NO_LORE_WITH_NUMBER)
-                        .setVariable("number", String.valueOf(loreIndex + 1))
-                        .toString());
-                return true;
+            for (Player online : Bukkit.getOnlinePlayers()) {
+                if (online == sender || (sender instanceof Player player && !player.canSee(online))) {
+                    continue;
+                }
+
+                if (online.getName().toLowerCase(Locale.ROOT).startsWith(current)) {
+                    suggestions.add(online.getName());
+                }
             }
 
-            String lore = lores.get(loreIndex);
-            ItemStack stack = player.getItemInHand();
+            return suggestions;
+        }
 
-            if (stack == null) {
-                player.sendMessage(i18n.getString(Messages.Command.NO_ITEM_IN_HAND));
-                return true;
+        if (args.length == 2 && args[0].equalsIgnoreCase("sign")) {
+            List<String> suggestions = new ArrayList<>();
+            int lores = main.getConfiguration().getItemControlLoreList().size();
+            for (int i = 1; i <= lores; i++) {
+                String number = String.valueOf(i);
+                if (number.startsWith(current)) {
+                    suggestions.add(number);
+                }
             }
 
-            ItemMeta meta = stack.getItemMeta();
-            List<String> itemLore = meta.getLore();
-            if (itemLore == null) {
-                itemLore = Lists.newArrayList();
-            }
+            return suggestions;
+        }
 
-            itemLore.add(lore);
-            meta.setLore(itemLore);
-
-            stack.setItemMeta(meta);
-            player.setItemInHand(stack);
-            player.sendMessage(i18n.getString(Messages.Command.LORE_APPLIED));
-        } else if (args[0].equalsIgnoreCase("version")) {
-            PluginDescriptionFile desc = main.getDescription();
-
-            player.sendMessage(ChatColor.GOLD + "" + ChatColor.BOLD + "SimpleTrading " + ChatColor.GREEN + "v" + desc.getVersion()
-                    + ChatColor.GRAY + " by " + ChatColor.GREEN + "Matze" + ChatColor.GRAY + " (@xaniox/@matzefratze123)");
-		} else {
-			if (!player.hasPermission(Permissions.TRADE_INITIATE.getPermission())) {
-                player.sendMessage(i18n.getString(Messages.Command.INSUFFICIENT_PERMISSION));
-                return true;
-			}
-			
-			String partnerName = args[0];
-			Player tradePartner = Bukkit.getPlayer(partnerName);
-			if (tradePartner == null) {
-                player.sendMessage(i18n.getVarString(Messages.Command.PLAYER_NOT_FOUND)
-                    .setVariable("player", partnerName)
-                    .toString());
-				return true;
-			}
-			
-			if (tradePartner == player) {
-                player.sendMessage(i18n.getString(Messages.Command.NO_SELF_TRADE));
-				return true;
-			}
-			
-			if (!main.getConfiguration().allowsCreativeTrading() && (player.getGameMode() == GameMode.CREATIVE || tradePartner.getGameMode() == GameMode.CREATIVE)) {
-                player.sendMessage(i18n.getVarString(Messages.General.PARTNER_IN_CREATIVE)
-                    .setVariable("player", tradePartner.getName())
-                    .toString());
-				return true;
-			}
-			
-			int maxDistance = main.getConfiguration().getMaximumTradeDistance();
-			if ((player.getWorld() != tradePartner.getWorld() || player.getLocation().distanceSquared(tradePartner.getLocation()) > maxDistance * 2) &&
-                    maxDistance != TradeConfiguration.NO_MAX_DISTANCE) {
-                player.sendMessage(i18n.getString(Messages.Command.PARTNER_TOO_FAR_AWAY));
-				return true;
-			}
-
-            if (!worldControlManager.isAllowed(player.getWorld())) {
-                player.sendMessage(i18n.getString(Messages.Command.CANNOT_TRADE_IN_WORLD));
-                return true;
-            }
-
-            if (!worldControlManager.isAllowed(tradePartner.getWorld())) {
-                player.sendMessage(i18n.getString(Messages.Command.CANNOT_TRADE_IN_WORLD_PARTNER));
-                return true;
-            }
-			
-			factory.initiateTrade(player, tradePartner);
-		}
-		
-		return true;
-	}
+        return List.of();
+    }
 
 }

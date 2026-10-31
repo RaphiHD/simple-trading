@@ -17,14 +17,12 @@
  */
 package de.xaniox.simpletrading.i18n;
 
-import org.bukkit.ChatColor;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.util.*;
 
 public class YMLResourceBundle extends ResourceBundle {
 	
-	private static final char TRANSLATION_CHAR = '&';
 	private YamlConfiguration config;
 	
 	public YMLResourceBundle(YamlConfiguration config) {
@@ -42,14 +40,14 @@ public class YMLResourceBundle extends ResourceBundle {
 			String[] array = new String[size];
 			
 			for (int i = 0; i < size; i++) {
-				array[i] = ChatColor.translateAlternateColorCodes(TRANSLATION_CHAR, list.get(i).toString());
+				array[i] = list.get(i).toString();
 			}
 			
 			value = array;
 		} else if (value instanceof String) {
 			String str = (String) value;
-			str = str.replace("\\n", "\n");
-			value = ChatColor.translateAlternateColorCodes(TRANSLATION_CHAR, str);
+			// Color codes are kept as legacy '&' codes and are parsed into components by Text
+			value = str.replace("\\n", "\n");
 		}
 		
 		return value;
